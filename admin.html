@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin — Tem Hoje na Região</title>
+  <style>
+    :root{--bg:#fff8ef;--card:#fff;--text:#2f2418;--muted:#7a6652;--brand:#d96b1c;--green:#2f7d3b;--red:#b42318;--blue:#1d4ed8;--line:#ead7c1;--shadow:0 10px 25px rgba(80,45,15,.12);--radius:18px}*{box-sizing:border-box}body{margin:0;font-family:Arial,Helvetica,sans-serif;background:linear-gradient(180deg,#fff2df 0%,var(--bg) 50%,#fff 100%);color:var(--text)}header{background:radial-gradient(circle at top left,#ffcf8e,#e87820 55%,#b94a13);color:white;padding:24px 16px}.wrap{width:min(1100px,100%);margin:0 auto}.topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.logo{font-weight:800;font-size:18px}.btn{border:0;border-radius:999px;padding:10px 14px;font-weight:800;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:40px;font-size:14px}.btn-outline{background:rgba(255,255,255,.18);color:white;border:1px solid rgba(255,255,255,.45)}.btn-light{background:#fff;color:var(--brand)}.btn-green{background:var(--green);color:white}.btn-orange{background:var(--brand);color:white}.btn-red{background:var(--red);color:white}.btn-blue{background:var(--blue);color:white}.btn-gray{background:#6b7280;color:white}main{padding:20px 16px 36px}.box{background:#fff;border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;margin-bottom:14px}.box h2{margin:0 0 8px}.muted{color:var(--muted);line-height:1.45}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 14px}.tab{background:#fff;border:1px solid var(--line);color:var(--text);border-radius:999px;padding:9px 12px;cursor:pointer;font-weight:800}.tab.active{background:var(--brand);color:white;border-color:var(--brand)}.cards{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}.card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px}.card h3{margin:0 0 6px}.price{font-size:22px;font-weight:900;color:var(--green);margin:6px 0}.meta{color:var(--muted);font-size:14px;line-height:1.45}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px dashed var(--line)}.status{display:inline-block;border-radius:999px;padding:5px 9px;font-size:12px;font-weight:900;background:#f3f4f6;color:#374151}.pendente{background:#fff3cd;color:#7a4b00}.aprovado{background:#dcfce7;color:#166534}.rejeitado{background:#fee2e2;color:#991b1b}.empty{background:#fff;border:1px dashed var(--line);border-radius:var(--radius);padding:22px;text-align:center;color:var(--muted);grid-column:1/-1}.erro{background:#fff0f0;border:1px solid #ffd0d0;color:var(--red)}input,textarea{width:100%;border:1px solid var(--line);border-radius:14px;padding:12px;font-size:15px}.editgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.full{grid-column:1/-1}@media(max-width:780px){.cards{grid-template-columns:1fr}.btn{width:100%}.editgrid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="logo">🧺 Admin — Tem Hoje na Região</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn btn-outline" href="index.html">Ver página pública</a><button id="btnLogin" class="btn btn-light">Entrar com Google</button><button id="btnSair" class="btn btn-outline" style="display:none">Sair</button></div>
+    </div>
+  </div>
+</header>
+<main>
+  <div class="wrap">
+    <section id="loginBox" class="box">
+      <h2>Acesso do administrador</h2>
+      <p class="muted">Entre com o e-mail autorizado no arquivo <strong>firebase-config.js</strong>. Depois você poderá aprovar, rejeitar, editar, destacar ou remover ofertas.</p>
+    </section>
+
+    <section id="painel" style="display:none">
+      <div class="box">
+        <h2>Painel de aprovação</h2>
+        <p class="muted" id="usuarioLogado"></p>
+        <div class="tabs">
+          <button class="tab active" data-status="pendente">Pendentes</button>
+          <button class="tab" data-status="aprovado">Aprovadas</button>
+          <button class="tab" data-status="rejeitado">Rejeitadas</button>
+          <button class="tab" data-status="todos">Todas</button>
+        </div>
+      </div>
+      <div id="lista" class="cards"><div class="empty">Carregando...</div></div>
+    </section>
+  </div>
+</main>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js";
+import { getFirestore, collection, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js";
+import { firebaseConfig, ADMIN_EMAILS } from "./firebase-config.js";
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+let ofertas = [];
+let statusAtual = "pendente";
+let usuarioAdmin = null;
+let unsubscribe = null;
+
+const btnLogin = document.getElementById("btnLogin");
+const btnSair = document.getElementById("btnSair");
+const painel = document.getElementById("painel");
+const loginBox = document.getElementById("loginBox");
+const lista = document.getElementById("lista");
+
+function isAdmin(user){ return !!user && ADMIN_EMAILS.map(e=>e.toLowerCase()).includes((user.email||"").toLowerCase()); }
+function escapeHtml(t){return String(t||"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");}
+function formatarPreco(valor){const numero=Number(String(valor||"").replace("R$","").replaceAll(".","").replace(",",".")); if(Number.isNaN(numero)) return valor || "Consultar"; return numero.toLocaleString("pt-BR",{style:"currency",currency:"BRL"});}
+function dataMs(o){return o.criadoEm?.toMillis ? o.criadoEm.toMillis() : (o.criadoEm || 0);}
+function statusClass(s){return s==="aprovado"?"aprovado":s==="rejeitado"?"rejeitado":"pendente";}
+
+btnLogin.onclick = async ()=>{ await signInWithPopup(auth, new GoogleAuthProvider()); };
+btnSair.onclick = async ()=>{ await signOut(auth); };
+
+document.querySelector(".tabs").addEventListener("click", e=>{
+  if(!e.target.matches("button[data-status]")) return;
+  statusAtual = e.target.dataset.status;
+  document.querySelectorAll(".tab").forEach(b=>b.classList.remove("active"));
+  e.target.classList.add("active");
+  renderizar();
+});
+
+onAuthStateChanged(auth, user=>{
+  if(user && isAdmin(user)){
+    usuarioAdmin = user;
+    btnLogin.style.display="none"; btnSair.style.display="inline-flex"; painel.style.display="block"; loginBox.style.display="none";
+    document.getElementById("usuarioLogado").textContent = `Logado como ${user.email}`;
+    iniciarLeitura();
+  }else{
+    usuarioAdmin = null;
+    if(unsubscribe) unsubscribe();
+    btnLogin.style.display="inline-flex"; btnSair.style.display="none"; painel.style.display="none"; loginBox.style.display="block";
+    if(user){ loginBox.innerHTML = `<h2>Acesso negado</h2><p class="muted">O e-mail ${escapeHtml(user.email)} entrou, mas não está autorizado como admin. Confira o ADMIN_EMAILS no firebase-config.js e as regras do Firestore.</p>`; }
+  }
+});
+
+function iniciarLeitura(){
+  if(unsubscribe) unsubscribe();
+  unsubscribe = onSnapshot(collection(db,"ofertas"), snap=>{
+    ofertas = snap.docs.map(d=>({id:d.id, ...d.data()})).sort((a,b)=>dataMs(b)-dataMs(a));
+    renderizar();
+  }, err=>{
+    console.error(err);
+    lista.innerHTML = `<div class="empty erro">Erro ao carregar ofertas. Confira as regras do Firestore.</div>`;
+  });
+}
+
+function renderizar(){
+  let dados = ofertas;
+  if(statusAtual !== "todos") dados = dados.filter(o=>o.status===statusAtual);
+  if(!dados.length){ lista.innerHTML = `<div class="empty">Nenhuma oferta nesta lista.</div>`; return; }
+  lista.innerHTML = dados.map(o=>cardOferta(o)).join("");
+}
+
+function cardOferta(o){
+  return `<article class="card" data-id="${o.id}">
+    <span class="status ${statusClass(o.status)}">${escapeHtml(o.status||"pendente")}</span> ${o.destaque?'<span class="status aprovado">Destaque</span>':''}
+    <h3>${escapeHtml(o.emoji||"🧺")} ${escapeHtml(o.produto)}</h3>
+    <div class="price">${formatarPreco(o.preco)}</div>
+    <div class="meta"><strong>Vendedor:</strong> ${escapeHtml(o.vendedor)} — ${escapeHtml(o.telefone)}<br><strong>Categoria:</strong> ${escapeHtml(o.categoria)}<br><strong>Localidade:</strong> ${escapeHtml(o.localidade)}<br><strong>Horário:</strong> ${escapeHtml(o.horario||"Consultar")}<br><strong>Mostrar até:</strong> ${escapeHtml(o.validade||"Sem data")}<br><strong>Foto/link:</strong> ${o.fotoUrl?`<a href="${escapeHtml(o.fotoUrl)}" target="_blank">abrir</a>`:"Não informado"}<br><strong>Obs.:</strong> ${escapeHtml(o.obs||"Sem observação")}</div>
+    <details><summary><strong>Editar dados</strong></summary>
+      <div class="editgrid">
+        <input data-campo="produto" value="${escapeHtml(o.produto)}" placeholder="Produto">
+        <input data-campo="preco" value="${escapeHtml(o.preco)}" placeholder="Preço">
+        <input data-campo="vendedor" value="${escapeHtml(o.vendedor)}" placeholder="Vendedor">
+        <input data-campo="telefone" value="${escapeHtml(o.telefone)}" placeholder="WhatsApp">
+        <input data-campo="categoria" value="${escapeHtml(o.categoria)}" placeholder="Categoria">
+        <input data-campo="localidade" value="${escapeHtml(o.localidade)}" placeholder="Localidade">
+        <input data-campo="horario" value="${escapeHtml(o.horario||"")}" placeholder="Horário">
+        <input data-campo="emoji" value="${escapeHtml(o.emoji||"")}" placeholder="Emoji">
+        <input class="full" data-campo="fotoUrl" value="${escapeHtml(o.fotoUrl||"")}" placeholder="Link de foto">
+        <textarea class="full" data-campo="obs" placeholder="Observação">${escapeHtml(o.obs||"")}</textarea>
+      </div>
+    </details>
+    <div class="actions">
+      <button class="btn btn-green" data-acao="aprovar">Aprovar</button>
+      <button class="btn btn-orange" data-acao="salvar">Salvar edição</button>
+      <button class="btn btn-blue" data-acao="destaque">${o.destaque?'Tirar destaque':'Destacar'}</button>
+      <button class="btn btn-gray" data-acao="rejeitar">Rejeitar</button>
+      <button class="btn btn-red" data-acao="remover">Remover</button>
+    </div>
+  </article>`;
+}
+
+lista.addEventListener("click", async e=>{
+  const btn = e.target.closest("button[data-acao]");
+  if(!btn) return;
+  const card = btn.closest(".card");
+  const id = card.dataset.id;
+  const oferta = ofertas.find(o=>o.id===id);
+  if(!oferta) return;
+  const ref = doc(db,"ofertas",id);
+  const acao = btn.dataset.acao;
+  try{
+    if(acao==="aprovar") await updateDoc(ref,{status:"aprovado", aprovadoEm:serverTimestamp(), aprovadoPor:usuarioAdmin.email});
+    if(acao==="rejeitar") await updateDoc(ref,{status:"rejeitado", rejeitadoEm:serverTimestamp(), rejeitadoPor:usuarioAdmin.email});
+    if(acao==="destaque") await updateDoc(ref,{destaque: !oferta.destaque});
+    if(acao==="remover") { if(confirm("Remover esta oferta de vez?")) await deleteDoc(ref); }
+    if(acao==="salvar"){
+      const dados = {};
+      card.querySelectorAll("[data-campo]").forEach(el=>dados[el.dataset.campo]=el.value.trim());
+      dados.editadoEm = serverTimestamp(); dados.editadoPor = usuarioAdmin.email;
+      await updateDoc(ref,dados);
+    }
+  }catch(err){
+    console.error(err);
+    alert("Erro ao fazer alteração. Confira regras do Firestore e sua permissão de admin.");
+  }
+});
+</script>
+</body>
+</html>
